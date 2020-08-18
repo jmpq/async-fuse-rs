@@ -36,8 +36,6 @@ const INIT_FLAGS: u32 = FUSE_ASYNC_READ | FUSE_CASE_INSENSITIVE | FUSE_VOL_RENAM
 pub struct Request {
     /// Channel sender for sending the reply
     ch: ChannelSender,
-    /// Request raw data
-    //data: &'a [u8],
     /// Parsed request
     request: ll::Request,
 }

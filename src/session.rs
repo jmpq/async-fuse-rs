@@ -118,7 +118,6 @@ pub struct BackgroundSession {
     /// Path of the mounted filesystem
     pub mountpoint: PathBuf,
     /// Thread guard of the background session
-    //pub guard: JoinGuard<'a, io::Result<()>>,
     pub guard: tokio::task::JoinHandle<io::Result<()>>,
 }
 
