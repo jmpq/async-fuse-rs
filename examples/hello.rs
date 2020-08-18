@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::time::{Duration, UNIX_EPOCH};
 use libc::ENOENT;
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
+use async_trait::async_trait;
 
 const TTL: Duration = Duration::from_secs(1);           // 1 second
 
@@ -44,8 +45,9 @@ const HELLO_TXT_ATTR: FileAttr = FileAttr {
 
 struct HelloFS;
 
+#[async_trait]
 impl Filesystem for HelloFS {
-    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+    async fn lookup(&self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         if parent == 1 && name.to_str() == Some("hello.txt") {
             reply.entry(&TTL, &HELLO_TXT_ATTR, 0);
         } else {
@@ -53,7 +55,7 @@ impl Filesystem for HelloFS {
         }
     }
 
-    fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
+    async fn getattr(&self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match ino {
             1 => reply.attr(&TTL, &HELLO_DIR_ATTR),
             2 => reply.attr(&TTL, &HELLO_TXT_ATTR),
@@ -61,7 +63,7 @@ impl Filesystem for HelloFS {
         }
     }
 
-    fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, _size: u32, reply: ReplyData) {
+    async fn read(&self, _req: &Request, ino: u64, _fh: u64, offset: i64, _size: u32, reply: ReplyData) {
         if ino == 2 {
             reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
         } else {
@@ -69,7 +71,7 @@ impl Filesystem for HelloFS {
         }
     }
 
-    fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, mut reply: ReplyDirectory) {
+    async fn readdir(&self, _req: &Request, ino: u64, _fh: u64, offset: i64, mut reply: ReplyDirectory) {
         if ino != 1 {
             reply.error(ENOENT);
             return;
@@ -89,12 +91,13 @@ impl Filesystem for HelloFS {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let mountpoint = env::args_os().nth(1).unwrap();
     let options = ["-o", "ro", "-o", "fsname=hello"]
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
-    fuse::mount(HelloFS, mountpoint, &options).unwrap();
+    fuse::mount(HelloFS, mountpoint, &options).await;
 }

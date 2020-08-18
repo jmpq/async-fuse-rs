@@ -1,14 +1,14 @@
 [package]
-name = "fuse"
+name = "async-fuse"
 edition = "2018"
-version = "0.4.0-dev"
-authors = ["Andreas Neuhaus <zargony@zargony.com>"]
-description = "Rust library for filesystems in userspace (FUSE)"
+version = "0.1.0-dev"
+authors = ["Andreas Neuhaus <zargony@zargony.com>", "James Pan <jiaming.pan@gmail.com>"]
+description = "Async Rust library for filesystems in userspace (FUSE)"
 documentation = "https://docs.rs/fuse"
-homepage = "https://github.com/zargony/fuse-rs"
-repository = "https://github.com/zargony/fuse-rs"
+homepage = "https://github.com/jmpq/async-fuse-rs"
+repository = "https://github.com/jmpq/async-fuse-rs"
 readme = "README.md"
-keywords = ["fuse", "filesystem", "system", "bindings"]
+keywords = ["fuse", "filesystem", "system", "bindings", "async"]
 categories = ["api-bindings", "filesystem"]
 license = "MIT"
 
@@ -16,12 +16,12 @@ license = "MIT"
 members = [".", "fuse-abi", "fuse-sys"]
 
 [badges]
-cirrus-ci = { repository = "zargony/fuse-rs" }
-github = { repository = "zargony/fuse-rs" }
+cirrus-ci = { repository = "jmpq/async-fuse-rs" }
+github = { repository = "jmpq/async-fuse-rs" }
 
 [dependencies]
-fuse-abi = { path = "./fuse-abi", version = "=0.4.0-dev" }
-fuse-sys = { path = "./fuse-sys", version = "=0.4.0-dev" }
+fuse-abi = { path = "./fuse-abi", version = "=0.1.0-dev" }
+fuse-sys = { path = "./fuse-sys", version = "=0.1.0-dev" }
 libc = "0.2.51"
 log = "0.4.6"
 thread-scoped = "1.0.2"

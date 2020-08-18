@@ -124,7 +124,8 @@ impl Request {
                 let filesystem = se.filesystem.clone();
                 tokio::spawn(async move {
                     self.dispatch_other(filesystem).await;
-                }); }
+                });
+            }
         }
     }
 

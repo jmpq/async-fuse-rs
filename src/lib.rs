@@ -6,14 +6,13 @@
 
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 
-use async_trait::async_trait;
-
 use std::convert::AsRef;
 use std::io;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::time::SystemTime;
 use libc::{c_int, ENOSYS};
+use async_trait::async_trait;
 
 pub use fuse_abi::FUSE_ROOT_ID;
 pub use fuse_abi::consts;

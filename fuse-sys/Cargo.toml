@@ -1,14 +1,14 @@
 [package]
 name = "fuse-sys"
 edition = "2018"
-version = "0.4.0-dev"
-authors = ["Andreas Neuhaus <zargony@zargony.com>"]
+version = "0.1.0-dev"
+authors = ["Andreas Neuhaus <zargony@zargony.com>", "James Pan <jiaming.pan@gmail.com>"]
 description = "FFI bindings to the FUSE kernel interface and libfuse"
-documentation = "https://docs.rs/fuse"
-homepage = "https://github.com/zargony/fuse-rs"
-repository = "https://github.com/zargony/fuse-rs"
+documentation = "https://docs.rs/async-fuse"
+homepage = "https://github.com/jmpq/aysnc-fuse-rs"
+repository = "https://github.com/jmpq/async-fuse-rs"
 readme = "README.md"
-keywords = ["fuse", "filesystem", "system", "bindings"]
+keywords = ["fuse", "filesystem", "system", "bindings", "async"]
 categories = ["external-ffi-bindings", "filesystem", "os::unix-apis"]
 license = "MIT"
 build = "build.rs"
