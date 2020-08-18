@@ -1,4 +1,4 @@
-# Rust FUSE - Filesystem in Userspace
+# Async Rust FUSE - Filesystem in Userspace
 
 ![Crates.io](https://img.shields.io/crates/l/fuse)
 [![Crates.io](https://img.shields.io/crates/v/fuse)](https://crates.io/crates/fuse)
