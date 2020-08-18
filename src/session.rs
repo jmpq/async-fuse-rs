@@ -9,9 +9,9 @@ use std::io;
 use std::ffi::OsStr;
 use std::fmt;
 use std::path::{PathBuf, Path};
-use thread_scoped::{scoped, JoinGuard};
 use libc::{EAGAIN, EINTR, ENODEV, ENOENT};
 use log::{error, info};
+use std::sync::Arc;
 
 use crate::channel::{self, Channel};
 use crate::request::Request;
@@ -28,9 +28,9 @@ const BUFFER_SIZE: usize = MAX_WRITE_SIZE + 4096;
 
 /// The session data structure
 #[derive(Debug)]
-pub struct Session<FS: Filesystem> {
+pub struct Session<FS: Filesystem + Send + Sync + 'static> {
     /// Filesystem operation implementations
-    pub filesystem: FS,
+    pub filesystem: Arc<FS>,
     /// Communication channel to the kernel driver
     ch: Channel,
     /// FUSE protocol major version
@@ -43,13 +43,13 @@ pub struct Session<FS: Filesystem> {
     pub destroyed: bool,
 }
 
-impl<FS: Filesystem> Session<FS> {
+impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
     /// Create a new session by mounting the given filesystem to the given mountpoint
     pub fn new(filesystem: FS, mountpoint: &Path, options: &[&OsStr]) -> io::Result<Session<FS>> {
         info!("Mounting {}", mountpoint.display());
         Channel::new(mountpoint, options).map(|ch| {
             Session {
-                filesystem: filesystem,
+                filesystem: Arc::new(filesystem),
                 ch: ch,
                 proto_major: 0,
                 proto_minor: 0,
@@ -68,7 +68,7 @@ impl<FS: Filesystem> Session<FS> {
     /// calls into the filesystem. This read-dispatch-loop is non-concurrent to prevent
     /// having multiple buffers (which take up much memory), but the filesystem methods
     /// may run concurrent by spawning threads.
-    pub fn run(&mut self) -> io::Result<()> {
+    pub async fn run(&mut self) -> io::Result<()> {
         // Buffer for receiving requests from the kernel. Only one is allocated and
         // it is reused immediately after dispatching to conserve memory and allocations.
         let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
@@ -78,7 +78,7 @@ impl<FS: Filesystem> Session<FS> {
             match self.ch.receive(&mut buffer) {
                 Ok(()) => match Request::new(self.ch.sender(), &buffer) {
                     // Dispatch request
-                    Some(req) => req.dispatch(self),
+                    Some(req) => req.dispatch(self).await,
                     // Quit loop on illegal request
                     None => break,
                 },
@@ -100,42 +100,43 @@ impl<FS: Filesystem> Session<FS> {
     }
 }
 
-impl<'a, FS: Filesystem + Send + 'a> Session<FS> {
+impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
     /// Run the session loop in a background thread
-    pub unsafe fn spawn(self) -> io::Result<BackgroundSession<'a>> {
-        BackgroundSession::new(self)
+    pub async unsafe fn spawn(self) -> io::Result<BackgroundSession> {
+        BackgroundSession::new(self).await
     }
 }
 
-impl<FS: Filesystem> Drop for Session<FS> {
+impl<FS: Filesystem + Send + Sync + 'static> Drop for Session<FS> {
     fn drop(&mut self) {
         info!("Unmounted {}", self.mountpoint().display());
     }
 }
 
 /// The background session data structure
-pub struct BackgroundSession<'a> {
+pub struct BackgroundSession {
     /// Path of the mounted filesystem
     pub mountpoint: PathBuf,
     /// Thread guard of the background session
-    pub guard: JoinGuard<'a, io::Result<()>>,
+    //pub guard: JoinGuard<'a, io::Result<()>>,
+    pub guard: tokio::task::JoinHandle<io::Result<()>>,
 }
 
-impl<'a> BackgroundSession<'a> {
+impl BackgroundSession {
     /// Create a new background session for the given session by running its
     /// session loop in a background thread. If the returned handle is dropped,
     /// the filesystem is unmounted and the given session ends.
-    pub unsafe fn new<FS: Filesystem + Send + 'a>(se: Session<FS>) -> io::Result<BackgroundSession<'a>> {
+    pub async unsafe fn new<FS: Filesystem + Send + Sync + 'static>(se: Session<FS>) -> io::Result<BackgroundSession> {
         let mountpoint = se.mountpoint().to_path_buf();
-        let guard = scoped(move || {
+        let guard = tokio::spawn(async move {
             let mut se = se;
-            se.run()
+            se.run().await
         });
         Ok(BackgroundSession { mountpoint: mountpoint, guard: guard })
     }
 }
 
-impl<'a> Drop for BackgroundSession<'a> {
+impl Drop for BackgroundSession {
     fn drop(&mut self) {
         info!("Unmounting {}", self.mountpoint.display());
         // Unmounting the filesystem will eventually end the session loop,
@@ -149,7 +150,7 @@ impl<'a> Drop for BackgroundSession<'a> {
 
 // replace with #[derive(Debug)] if Debug ever gets implemented for
 // thread_scoped::JoinGuard
-impl<'a> fmt::Debug for BackgroundSession<'a> {
+impl fmt::Debug for BackgroundSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "BackgroundSession {{ mountpoint: {:?}, guard: JoinGuard<()> }}", self.mountpoint)
     }

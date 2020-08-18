@@ -5,7 +5,7 @@
 
 use fuse_abi::*;
 use std::convert::TryFrom;
-use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::{error, fmt, mem};
 
 use super::argument::ArgumentIterator;
@@ -41,161 +41,161 @@ impl error::Error for RequestError {}
 /// Filesystem operation (and arguments) the kernel driver wants us to perform. The fields of each
 /// variant needs to match the actual arguments the kernel driver sends for the specific operation.
 #[derive(Debug)]
-pub enum Operation<'a> {
+pub enum Operation {
     Lookup {
-        name: &'a OsStr,
+        name: OsString,
     },
     Forget {
-        arg: &'a fuse_forget_in,
+        arg: fuse_forget_in,
     },
     GetAttr,
     SetAttr {
-        arg: &'a fuse_setattr_in,
+        arg: fuse_setattr_in,
     },
     ReadLink,
     SymLink {
-        name: &'a OsStr,
-        link: &'a OsStr,
+        name: OsString,
+        link: OsString,
     },
     MkNod {
-        arg: &'a fuse_mknod_in,
-        name: &'a OsStr,
+        arg: fuse_mknod_in,
+        name: OsString,
     },
     MkDir {
-        arg: &'a fuse_mkdir_in,
-        name: &'a OsStr,
+        arg: fuse_mkdir_in,
+        name: OsString,
     },
     Unlink {
-        name: &'a OsStr,
+        name: OsString,
     },
     RmDir {
-        name: &'a OsStr,
+        name: OsString,
     },
     Rename {
-        arg: &'a fuse_rename_in,
-        name: &'a OsStr,
-        newname: &'a OsStr,
+        arg: fuse_rename_in,
+        name: OsString,
+        newname: OsString,
     },
     Link {
-        arg: &'a fuse_link_in,
-        name: &'a OsStr,
+        arg: fuse_link_in,
+        name: OsString,
     },
     Open {
-        arg: &'a fuse_open_in,
+        arg: fuse_open_in,
     },
     Read {
-        arg: &'a fuse_read_in,
+        arg: fuse_read_in,
     },
     Write {
-        arg: &'a fuse_write_in,
-        data: &'a [u8],
+        arg: fuse_write_in,
+        data: Vec<u8>,
     },
     StatFs,
     Release {
-        arg: &'a fuse_release_in,
+        arg: fuse_release_in,
     },
     FSync {
-        arg: &'a fuse_fsync_in,
+        arg: fuse_fsync_in,
     },
     SetXAttr {
-        arg: &'a fuse_setxattr_in,
-        name: &'a OsStr,
-        value: &'a [u8],
+        arg: fuse_setxattr_in,
+        name: OsString,
+        value: Vec<u8>,
     },
     GetXAttr {
-        arg: &'a fuse_getxattr_in,
-        name: &'a OsStr,
+        arg: fuse_getxattr_in,
+        name: OsString,
     },
     ListXAttr {
-        arg: &'a fuse_getxattr_in,
+        arg: fuse_getxattr_in,
     },
     RemoveXAttr {
-        name: &'a OsStr,
+        name: OsString,
     },
     Flush {
-        arg: &'a fuse_flush_in,
+        arg: fuse_flush_in,
     },
     Init {
-        arg: &'a fuse_init_in,
+        arg: fuse_init_in,
     },
     OpenDir {
-        arg: &'a fuse_open_in,
+        arg: fuse_open_in,
     },
     ReadDir {
-        arg: &'a fuse_read_in,
+        arg: fuse_read_in,
     },
     ReleaseDir {
-        arg: &'a fuse_release_in,
+        arg: fuse_release_in,
     },
     FSyncDir {
-        arg: &'a fuse_fsync_in,
+        arg: fuse_fsync_in,
     },
     GetLk {
-        arg: &'a fuse_lk_in,
+        arg: fuse_lk_in,
     },
     SetLk {
-        arg: &'a fuse_lk_in,
+        arg: fuse_lk_in,
     },
     SetLkW {
-        arg: &'a fuse_lk_in,
+        arg: fuse_lk_in,
     },
     Access {
-        arg: &'a fuse_access_in,
+        arg: fuse_access_in,
     },
     Create {
-        arg: &'a fuse_create_in,
-        name: &'a OsStr,
+        arg: fuse_create_in,
+        name: OsString,
     },
     Interrupt {
-        arg: &'a fuse_interrupt_in,
+        arg: fuse_interrupt_in,
     },
     BMap {
-        arg: &'a fuse_bmap_in,
+        arg: fuse_bmap_in,
     },
     Destroy,
     // TODO: FUSE_IOCTL since ABI 7.11
     // IoCtl {
-    //     arg: &'a fuse_ioctl_in,
-    //     data: &'a [u8],
+    //     arg: fuse_ioctl_in,
+    //     data: Vec<u8>,
     // },
     // TODO: FUSE_POLL since ABI 7.11
     // Poll {
-    //     arg: &'a fuse_poll_in,
+    //     arg: fuse_poll_in,
     // },
     // TODO: FUSE_NOTIFY_REPLY since ABI 7.15
     // NotifyReply {
-    //     data: &'a [u8],
+    //     data: Vec<u8>,
     // },
     // TODO: FUSE_BATCH_FORGET since ABI 7.16
     // BatchForget {
-    //     arg: &'a fuse_forget_in,
-    //     nodes: &'a [fuse_forget_one],
+    //     arg: fuse_forget_in,
+    //     nodes: Vec<fuse_forget_one>,
     // },
     // TODO: FUSE_FALLOCATE since ABI 7.19
     // FAllocate {
-    //     arg: &'a fuse_fallocate_in,
+    //     arg: fuse_fallocate_in,
     // },
 
     #[cfg(target_os = "macos")]
     SetVolName {
-        name: &'a OsStr,
+        name: OsString,
     },
     #[cfg(target_os = "macos")]
     GetXTimes,
     #[cfg(target_os = "macos")]
     Exchange {
-        arg: &'a fuse_exchange_in,
-        oldname: &'a OsStr,
-        newname: &'a OsStr,
+        arg: fuse_exchange_in,
+        oldname: OsString,
+        newname: OsString,
     },
 
     // TODO: CUSE_INIT since ABI 7.12
     // CuseInit {
-    //     arg: &'a fuse_init_in,
+    //     arg: fuse_init_in,
     // },
 }
 
-impl<'a> fmt::Display for Operation<'a> {
+impl<'a> fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Operation::Lookup { name } => write!(f, "LOOKUP name {:?}", name),
@@ -245,95 +245,95 @@ impl<'a> fmt::Display for Operation<'a> {
     }
 }
 
-impl<'a> Operation<'a> {
-    fn parse(opcode: &fuse_opcode, data: &mut ArgumentIterator<'a>) -> Option<Self> {
+impl Operation {
+    fn parse(opcode: &fuse_opcode, data: &mut ArgumentIterator<'_>) -> Option<Self> {
         unsafe {
             Some(match opcode {
                 fuse_opcode::FUSE_LOOKUP => Operation::Lookup {
-                    name: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
                 },
-                fuse_opcode::FUSE_FORGET => Operation::Forget { arg: data.fetch()? },
+                fuse_opcode::FUSE_FORGET => Operation::Forget { arg: *data.fetch()? },
                 fuse_opcode::FUSE_GETATTR => Operation::GetAttr,
-                fuse_opcode::FUSE_SETATTR => Operation::SetAttr { arg: data.fetch()? },
+                fuse_opcode::FUSE_SETATTR => Operation::SetAttr { arg: *data.fetch()? },
                 fuse_opcode::FUSE_READLINK => Operation::ReadLink,
                 fuse_opcode::FUSE_SYMLINK => Operation::SymLink {
-                    name: data.fetch_str()?,
-                    link: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
+                    link: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_MKNOD => Operation::MkNod {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_MKDIR => Operation::MkDir {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_UNLINK => Operation::Unlink {
-                    name: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_RMDIR => Operation::RmDir {
-                    name: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_RENAME => Operation::Rename {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
-                    newname: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
+                    newname: data.fetch_str()?.into(),
                 },
                 fuse_opcode::FUSE_LINK => Operation::Link {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
                 },
-                fuse_opcode::FUSE_OPEN => Operation::Open { arg: data.fetch()? },
-                fuse_opcode::FUSE_READ => Operation::Read { arg: data.fetch()? },
+                fuse_opcode::FUSE_OPEN => Operation::Open { arg: *data.fetch()? },
+                fuse_opcode::FUSE_READ => Operation::Read { arg: *data.fetch()? },
                 fuse_opcode::FUSE_WRITE => Operation::Write {
-                    arg: data.fetch()?,
-                    data: data.fetch_all(),
+                    arg: *data.fetch()?,
+                    data: data.fetch_all().to_vec(),
                 },
                 fuse_opcode::FUSE_STATFS => Operation::StatFs,
-                fuse_opcode::FUSE_RELEASE => Operation::Release { arg: data.fetch()? },
-                fuse_opcode::FUSE_FSYNC => Operation::FSync { arg: data.fetch()? },
+                fuse_opcode::FUSE_RELEASE => Operation::Release { arg: *data.fetch()? },
+                fuse_opcode::FUSE_FSYNC => Operation::FSync { arg: *data.fetch()? },
                 fuse_opcode::FUSE_SETXATTR => Operation::SetXAttr {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
-                    value: data.fetch_all(),
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
+                    value: data.fetch_all().to_vec(),
                 },
                 fuse_opcode::FUSE_GETXATTR => Operation::GetXAttr {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
                 },
-                fuse_opcode::FUSE_LISTXATTR => Operation::ListXAttr { arg: data.fetch()? },
+                fuse_opcode::FUSE_LISTXATTR => Operation::ListXAttr { arg: *data.fetch()? },
                 fuse_opcode::FUSE_REMOVEXATTR => Operation::RemoveXAttr {
-                    name: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
                 },
-                fuse_opcode::FUSE_FLUSH => Operation::Flush { arg: data.fetch()? },
-                fuse_opcode::FUSE_INIT => Operation::Init { arg: data.fetch()? },
-                fuse_opcode::FUSE_OPENDIR => Operation::OpenDir { arg: data.fetch()? },
-                fuse_opcode::FUSE_READDIR => Operation::ReadDir { arg: data.fetch()? },
-                fuse_opcode::FUSE_RELEASEDIR => Operation::ReleaseDir { arg: data.fetch()? },
-                fuse_opcode::FUSE_FSYNCDIR => Operation::FSyncDir { arg: data.fetch()? },
-                fuse_opcode::FUSE_GETLK => Operation::GetLk { arg: data.fetch()? },
-                fuse_opcode::FUSE_SETLK => Operation::SetLk { arg: data.fetch()? },
-                fuse_opcode::FUSE_SETLKW => Operation::SetLkW { arg: data.fetch()? },
-                fuse_opcode::FUSE_ACCESS => Operation::Access { arg: data.fetch()? },
+                fuse_opcode::FUSE_FLUSH => Operation::Flush { arg: *data.fetch()? },
+                fuse_opcode::FUSE_INIT => Operation::Init { arg: *data.fetch()? },
+                fuse_opcode::FUSE_OPENDIR => Operation::OpenDir { arg: *data.fetch()? },
+                fuse_opcode::FUSE_READDIR => Operation::ReadDir { arg: *data.fetch()? },
+                fuse_opcode::FUSE_RELEASEDIR => Operation::ReleaseDir { arg: *data.fetch()? },
+                fuse_opcode::FUSE_FSYNCDIR => Operation::FSyncDir { arg: *data.fetch()? },
+                fuse_opcode::FUSE_GETLK => Operation::GetLk { arg: *data.fetch()? },
+                fuse_opcode::FUSE_SETLK => Operation::SetLk { arg: *data.fetch()? },
+                fuse_opcode::FUSE_SETLKW => Operation::SetLkW { arg: *data.fetch()? },
+                fuse_opcode::FUSE_ACCESS => Operation::Access { arg: *data.fetch()? },
                 fuse_opcode::FUSE_CREATE => Operation::Create {
-                    arg: data.fetch()?,
-                    name: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    name: data.fetch_str()?.into(),
                 },
-                fuse_opcode::FUSE_INTERRUPT => Operation::Interrupt { arg: data.fetch()? },
-                fuse_opcode::FUSE_BMAP => Operation::BMap { arg: data.fetch()? },
+                fuse_opcode::FUSE_INTERRUPT => Operation::Interrupt { arg: *data.fetch()? },
+                fuse_opcode::FUSE_BMAP => Operation::BMap { arg: *data.fetch()? },
                 fuse_opcode::FUSE_DESTROY => Operation::Destroy,
 
                 #[cfg(target_os = "macos")]
                 fuse_opcode::FUSE_SETVOLNAME => Operation::SetVolName {
-                    name: data.fetch_str()?,
+                    name: data.fetch_str()?.into(),
                 },
                 #[cfg(target_os = "macos")]
                 fuse_opcode::FUSE_GETXTIMES => Operation::GetXTimes,
                 #[cfg(target_os = "macos")]
                 fuse_opcode::FUSE_EXCHANGE => Operation::Exchange {
-                    arg: data.fetch()?,
-                    oldname: data.fetch_str()?,
-                    newname: data.fetch_str()?,
+                    arg: *data.fetch()?,
+                    oldname: data.fetch_str()?.into(),
+                    newname: data.fetch_str()?.into(),
                 },
             })
         }
@@ -343,21 +343,21 @@ impl<'a> Operation<'a> {
 
 /// Low-level request of a filesystem operation the kernel driver wants to perform.
 #[derive(Debug)]
-pub struct Request<'a> {
-    header: &'a fuse_in_header,
-    operation: Operation<'a>,
+pub struct Request {
+    header: fuse_in_header,
+    operation: Operation,
 }
 
-impl<'a> fmt::Display for Request<'a> {
+impl fmt::Display for Request {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FUSE({:3}) ino {:#018x}: {}", self.header.unique, self.header.nodeid, self.operation)
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Request<'a> {
+impl TryFrom<&[u8]> for Request {
     type Error = RequestError;
 
-    fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         // Parse a raw packet as sent by the kernel driver into typed data. Every request always
         // begins with a `fuse_in_header` struct followed by arguments depending on the opcode.
         let data_len = data.len();
@@ -375,11 +375,13 @@ impl<'a> TryFrom<&'a [u8]> for Request<'a> {
         // Parse/check operation arguments
         let operation =
             Operation::parse(&opcode, &mut data).ok_or_else(|| RequestError::InsufficientData)?;
+        let header = *header;
+
         Ok(Self { header, operation })
     }
 }
 
-impl<'a> Request<'a> {
+impl Request {
     /// Returns the unique identifier of this request.
     ///
     /// The FUSE kernel driver assigns a unique id to every concurrent request. This allows to
@@ -416,7 +418,7 @@ impl<'a> Request<'a> {
 
     /// Returns the filesystem operation (and its arguments) of this request.
     #[inline]
-    pub fn operation(&self) -> &Operation<'_> {
+    pub fn operation(&self) -> &Operation {
         &self.operation
     }
 }

@@ -12,6 +12,7 @@ use libc::{EIO, ENOSYS, EPROTO};
 use fuse_abi::*;
 use fuse_abi::consts::*;
 use log::{debug, error, warn};
+use std::sync::Arc;
 
 use crate::channel::ChannelSender;
 use crate::ll;
@@ -32,18 +33,18 @@ const INIT_FLAGS: u32 = FUSE_ASYNC_READ | FUSE_CASE_INSENSITIVE | FUSE_VOL_RENAM
 
 /// Request data structure
 #[derive(Debug)]
-pub struct Request<'a> {
+pub struct Request {
     /// Channel sender for sending the reply
     ch: ChannelSender,
     /// Request raw data
-    data: &'a [u8],
+    //data: &'a [u8],
     /// Parsed request
-    request: ll::Request<'a>,
+    request: ll::Request,
 }
 
-impl<'a> Request<'a> {
+impl Request {
     /// Create a new request from the given data
-    pub fn new(ch: ChannelSender, data: &'a [u8]) -> Option<Request<'a>> {
+    pub fn new(ch: ChannelSender, data: &[u8]) -> Option<Request> {
         let request = match ll::Request::try_from(data) {
             Ok(request) => request,
             Err(err) => {
@@ -53,19 +54,20 @@ impl<'a> Request<'a> {
             }
         };
 
-        Some(Self { ch, data, request})
+        Some(Self {ch, request})
     }
 
     /// Dispatch request to the given filesystem.
     /// This calls the appropriate filesystem operation method for the
     /// request and sends back the returned reply to the kernel
-    pub fn dispatch<FS: Filesystem>(&self, se: &mut Session<FS>) {
-        debug!("{}", self.request);
+    pub async fn dispatch<FS: Filesystem + Send + Sync + 'static>(self, se: &mut Session<FS>) {
+        let req = &self;
+        debug!("{}", req.request);
 
-        match self.request.operation() {
+        match req.request.operation() {
             // Filesystem initialization
             ll::Operation::Init { arg } => {
-                let reply: ReplyRaw<fuse_init_out> = self.reply();
+                let reply: ReplyRaw<fuse_init_out> = req.reply();
                 // We don't support ABI versions before 7.6
                 if arg.major < 7 || (arg.major == 7 && arg.minor < 6) {
                     error!("Unsupported FUSE ABI version {}.{}", arg.major, arg.minor);
@@ -76,7 +78,7 @@ impl<'a> Request<'a> {
                 se.proto_major = arg.major;
                 se.proto_minor = arg.minor;
                 // Call filesystem init method and give it a chance to return an error
-                let res = se.filesystem.init(self);
+                let res = se.filesystem.init(req).await;
                 if let Err(err) = res {
                     reply.error(err);
                     return;
@@ -98,34 +100,46 @@ impl<'a> Request<'a> {
             }
             // Any operation is invalid before initialization
             _ if !se.initialized => {
-                warn!("Ignoring FUSE operation before init: {}", self.request);
-                self.reply::<ReplyEmpty>().error(EIO);
+                warn!("Ignoring FUSE operation before init: {}", req.request);
+                req.reply::<ReplyEmpty>().error(EIO);
             }
             // Filesystem destroyed
             ll::Operation::Destroy => {
-                se.filesystem.destroy(self);
+                se.filesystem.destroy(req).await;
                 se.destroyed = true;
-                self.reply::<ReplyEmpty>().ok();
+                req.reply::<ReplyEmpty>().ok();
             }
             // Any operation is invalid after destroy
             _ if se.destroyed => {
-                warn!("Ignoring FUSE operation after destroy: {}", self.request);
-                self.reply::<ReplyEmpty>().error(EIO);
+                warn!("Ignoring FUSE operation after destroy: {}", req.request);
+                req.reply::<ReplyEmpty>().error(EIO);
             }
 
             ll::Operation::Interrupt { .. } => {
                 // TODO: handle FUSE_INTERRUPT
-                self.reply::<ReplyEmpty>().error(ENOSYS);
+                req.reply::<ReplyEmpty>().error(ENOSYS);
             }
 
+            _ => { 
+                let filesystem = se.filesystem.clone();
+                tokio::spawn(async move {
+                    self.dispatch_other(filesystem).await;
+                }); }
+        }
+    }
+
+    /// Dispatch request to the given filesystem except Init and Destroy
+    pub async fn dispatch_other<FS: Filesystem+Send+Sync>(self, filesystem: Arc<FS>) {
+        let req = &self;
+        match req.request.operation() {
             ll::Operation::Lookup { name } => {
-                se.filesystem.lookup(self, self.request.nodeid(), &name, self.reply());
+                filesystem.lookup(req, req.request.nodeid(), &name, req.reply()).await;
             }
             ll::Operation::Forget { arg } => {
-                se.filesystem.forget(self, self.request.nodeid(), arg.nlookup); // no reply
+                filesystem.forget(req, req.request.nodeid(), arg.nlookup).await; // no reply
             }
             ll::Operation::GetAttr => {
-                se.filesystem.getattr(self, self.request.nodeid(), self.reply());
+                filesystem.getattr(req, req.request.nodeid(), req.reply()).await;
             }
             ll::Operation::SetAttr { arg } => {
                 let mode = match arg.valid & FATTR_MODE {
@@ -183,77 +197,77 @@ impl<'a> Request<'a> {
                     (None, None, None, None)
                 }
                 let (crtime, chgtime, bkuptime, flags) = get_macos_setattr(arg);
-                se.filesystem.setattr(self, self.request.nodeid(), mode, uid, gid, size, atime, mtime, fh, crtime, chgtime, bkuptime, flags, self.reply());
+                filesystem.setattr(req, req.request.nodeid(), mode, uid, gid, size, atime, mtime, fh, crtime, chgtime, bkuptime, flags, req.reply()).await;
             }
             ll::Operation::ReadLink => {
-                se.filesystem.readlink(self, self.request.nodeid(), self.reply());
+                filesystem.readlink(req, req.request.nodeid(), req.reply()).await;
             }
             ll::Operation::MkNod { arg, name } => {
-                se.filesystem.mknod(self, self.request.nodeid(), &name, arg.mode, arg.rdev, self.reply());
+                filesystem.mknod(req, req.request.nodeid(), &name, arg.mode, arg.rdev, req.reply()).await;
             }
             ll::Operation::MkDir { arg, name } => {
-                se.filesystem.mkdir(self, self.request.nodeid(), &name, arg.mode, self.reply());
+                filesystem.mkdir(req, req.request.nodeid(), &name, arg.mode, req.reply()).await;
             }
             ll::Operation::Unlink { name } => {
-                se.filesystem.unlink(self, self.request.nodeid(), &name, self.reply());
+                filesystem.unlink(req, req.request.nodeid(), &name, req.reply()).await;
             }
             ll::Operation::RmDir { name } => {
-                se.filesystem.rmdir(self, self.request.nodeid(), &name, self.reply());
+                filesystem.rmdir(req, req.request.nodeid(), &name, req.reply()).await;
             }
             ll::Operation::SymLink { name, link } => {
-                se.filesystem.symlink(self, self.request.nodeid(), &name, &Path::new(link), self.reply());
+                filesystem.symlink(req, req.request.nodeid(), &name, &Path::new(link), req.reply()).await;
             }
             ll::Operation::Rename { arg, name, newname } => {
-                se.filesystem.rename(self, self.request.nodeid(), &name, arg.newdir, &newname, self.reply());
+                filesystem.rename(req, req.request.nodeid(), &name, arg.newdir, &newname, req.reply()).await;
             }
             ll::Operation::Link { arg, name } => {
-                se.filesystem.link(self, arg.oldnodeid, self.request.nodeid(), &name, self.reply());
+                filesystem.link(req, arg.oldnodeid, req.request.nodeid(), &name, req.reply()).await;
             }
             ll::Operation::Open { arg } => {
-                se.filesystem.open(self, self.request.nodeid(), arg.flags, self.reply());
+                filesystem.open(req, req.request.nodeid(), arg.flags, req.reply()).await;
             }
             ll::Operation::Read { arg } => {
-                se.filesystem.read(self, self.request.nodeid(), arg.fh, arg.offset as i64, arg.size, self.reply());
+                filesystem.read(req, req.request.nodeid(), arg.fh, arg.offset as i64, arg.size, req.reply()).await;
             }
             ll::Operation::Write { arg, data } => {
                 assert!(data.len() == arg.size as usize);
-                se.filesystem.write(self, self.request.nodeid(), arg.fh, arg.offset as i64, data, arg.write_flags, self.reply());
+                filesystem.write(req, req.request.nodeid(), arg.fh, arg.offset as i64, data, arg.write_flags, req.reply()).await;
             }
             ll::Operation::Flush { arg } => {
-                se.filesystem.flush(self, self.request.nodeid(), arg.fh, arg.lock_owner, self.reply());
+                filesystem.flush(req, req.request.nodeid(), arg.fh, arg.lock_owner, req.reply()).await;
             }
             ll::Operation::Release { arg } => {
                 let flush = match arg.release_flags & FUSE_RELEASE_FLUSH {
                     0 => false,
                     _ => true,
                 };
-                se.filesystem.release(self, self.request.nodeid(), arg.fh, arg.flags, arg.lock_owner, flush, self.reply());
+                filesystem.release(req, req.request.nodeid(), arg.fh, arg.flags, arg.lock_owner, flush, req.reply()).await;
             }
             ll::Operation::FSync { arg } => {
                 let datasync = match arg.fsync_flags & 1 {
                     0 => false,
                     _ => true,
                 };
-                se.filesystem.fsync(self, self.request.nodeid(), arg.fh, datasync, self.reply());
+                filesystem.fsync(req, req.request.nodeid(), arg.fh, datasync, req.reply()).await;
             }
             ll::Operation::OpenDir { arg } => {
-                se.filesystem.opendir(self, self.request.nodeid(), arg.flags, self.reply());
+                filesystem.opendir(req, req.request.nodeid(), arg.flags, req.reply()).await;
             }
             ll::Operation::ReadDir { arg } => {
-                se.filesystem.readdir(self, self.request.nodeid(), arg.fh, arg.offset as i64, ReplyDirectory::new(self.request.unique(), self.ch, arg.size as usize));
+                filesystem.readdir(req, req.request.nodeid(), arg.fh, arg.offset as i64, ReplyDirectory::new(req.request.unique(), req.ch, arg.size as usize)).await;
             }
             ll::Operation::ReleaseDir { arg } => {
-                se.filesystem.releasedir(self, self.request.nodeid(), arg.fh, arg.flags, self.reply());
+                filesystem.releasedir(req, req.request.nodeid(), arg.fh, arg.flags, req.reply()).await;
             }
             ll::Operation::FSyncDir { arg } => {
                 let datasync = match arg.fsync_flags & 1 {
                     0 => false,
                     _ => true,
                 };
-                se.filesystem.fsyncdir(self, self.request.nodeid(), arg.fh, datasync, self.reply());
+                filesystem.fsyncdir(req, req.request.nodeid(), arg.fh, datasync, req.reply()).await;
             }
             ll::Operation::StatFs => {
-                se.filesystem.statfs(self, self.request.nodeid(), self.reply());
+                filesystem.statfs(req, req.request.nodeid(), req.reply()).await;
             }
             ll::Operation::SetXAttr { arg, name, value } => {
                 assert!(value.len() == arg.size as usize);
@@ -263,48 +277,50 @@ impl<'a> Request<'a> {
                 #[cfg(not(target_os = "macos"))]
                 #[inline]
                 fn get_position (_arg: &fuse_setxattr_in) -> u32 { 0 }
-                se.filesystem.setxattr(self, self.request.nodeid(), name, value, arg.flags, get_position(arg), self.reply());
+                filesystem.setxattr(req, req.request.nodeid(), name, value, arg.flags, get_position(arg), req.reply()).await;
             }
             ll::Operation::GetXAttr { arg, name } => {
-                se.filesystem.getxattr(self, self.request.nodeid(), name, arg.size, self.reply());
+                filesystem.getxattr(req, req.request.nodeid(), name, arg.size, req.reply()).await;
             }
             ll::Operation::ListXAttr { arg } => {
-                se.filesystem.listxattr(self, self.request.nodeid(), arg.size, self.reply());
+                filesystem.listxattr(req, req.request.nodeid(), arg.size, req.reply()).await;
             }
             ll::Operation::RemoveXAttr { name } => {
-                se.filesystem.removexattr(self, self.request.nodeid(), name, self.reply());
+                filesystem.removexattr(req, req.request.nodeid(), name, req.reply()).await;
             }
             ll::Operation::Access { arg } => {
-                se.filesystem.access(self, self.request.nodeid(), arg.mask, self.reply());
+                filesystem.access(req, req.request.nodeid(), arg.mask, req.reply()).await;
             }
             ll::Operation::Create { arg, name } => {
-                se.filesystem.create(self, self.request.nodeid(), &name, arg.mode, arg.flags, self.reply());
+                filesystem.create(req, req.request.nodeid(), &name, arg.mode, arg.flags, req.reply()).await;
             }
             ll::Operation::GetLk { arg } => {
-                se.filesystem.getlk(self, self.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, self.reply());
+                filesystem.getlk(req, req.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, req.reply()).await;
             }
             ll::Operation::SetLk { arg } => {
-                se.filesystem.setlk(self, self.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, false, self.reply());
+                filesystem.setlk(req, req.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, false, req.reply()).await;
             }
             ll::Operation::SetLkW { arg } => {
-                se.filesystem.setlk(self, self.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, true, self.reply());
+                filesystem.setlk(req, req.request.nodeid(), arg.fh, arg.owner, arg.lk.start, arg.lk.end, arg.lk.typ, arg.lk.pid, true, req.reply()).await;
             }
             ll::Operation::BMap { arg } => {
-                se.filesystem.bmap(self, self.request.nodeid(), arg.blocksize, arg.block, self.reply());
+                filesystem.bmap(req, req.request.nodeid(), arg.blocksize, arg.block, req.reply()).await;
             }
 
             #[cfg(target_os = "macos")]
             ll::Operation::SetVolName { name } => {
-                se.filesystem.setvolname(self, name, self.reply());
+                filesystem.setvolname(req, name, req.reply()).await;
             }
             #[cfg(target_os = "macos")]
             ll::Operation::GetXTimes => {
-                se.filesystem.getxtimes(self, self.request.nodeid(), self.reply());
+                filesystem.getxtimes(req, req.request.nodeid(), req.reply()).await;
             }
             #[cfg(target_os = "macos")]
             ll::Operation::Exchange { arg, oldname, newname } => {
-                se.filesystem.exchange(self, arg.olddir, &oldname, arg.newdir, &newname, arg.options, self.reply());
+                filesystem.exchange(req, arg.olddir, &oldname, arg.newdir, &newname, arg.options, req.reply()).await;
             }
+
+            _ => {}
         }
     }
 
