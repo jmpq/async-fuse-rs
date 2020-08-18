@@ -2,7 +2,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::time::{Duration, UNIX_EPOCH};
 use libc::ENOENT;
-use fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
+use async_fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
 use async_trait::async_trait;
 
 const TTL: Duration = Duration::from_secs(1);           // 1 second
@@ -99,5 +99,5 @@ async fn main() {
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
-    fuse::mount(HelloFS, mountpoint, &options).await;
+    async_fuse::mount(HelloFS, mountpoint, &options).await;
 }
