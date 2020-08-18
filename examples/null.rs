@@ -9,5 +9,5 @@ impl Filesystem for NullFS {}
 async fn main() {
     env_logger::init();
     let mountpoint = env::args_os().nth(1).unwrap();
-    fuse::mount(NullFS, mountpoint, &[]).await;
+    async_fuse::mount(NullFS, mountpoint, &[]).await.unwrap();
 }
