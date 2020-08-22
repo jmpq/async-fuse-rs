@@ -370,9 +370,9 @@ pub trait Filesystem {
 ///
 /// Note that you need to lead each option with a separate `"-o"` string. See
 /// `examples/hello.rs`.
-pub async fn mount<FS: Filesystem + Send + Sync + 'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[OsString]) -> io::Result<()>{
-    let mut se = Session::new(filesystem, mountpoint.as_ref(), options)?;
-    se.run().await
+pub fn mount<FS: Filesystem + Send + Sync + 'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[OsString]) -> io::Result<()>{
+    let se = Session::new(filesystem, mountpoint.as_ref(), options)?;
+    se.run()
 }
 
 /// Mount the given filesystem to the given mountpoint. This function spawns

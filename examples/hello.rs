@@ -99,5 +99,5 @@ async fn main() {
         .iter()
         .map(|s| OsString::from(&s))
         .collect::<Vec<OsString>>();
-    async_fuse::mount(HelloFS, mountpoint, &options).await.unwrap();
+    async_fuse::mount(HelloFS, mountpoint, &options).unwrap();
 }

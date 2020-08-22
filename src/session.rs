@@ -12,6 +12,7 @@ use std::path::{PathBuf, Path};
 use libc::{EAGAIN, EINTR, ENODEV, ENOENT};
 use log::{error, info};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 
 use crate::channel::{self, Channel};
 use crate::request::Request;
@@ -30,17 +31,17 @@ const BUFFER_SIZE: usize = MAX_WRITE_SIZE + 4096;
 #[derive(Debug)]
 pub struct Session<FS: Filesystem + Send + Sync + 'static> {
     /// Filesystem operation implementations
-    pub filesystem: Arc<FS>,
+    pub filesystem: FS,
     /// Communication channel to the kernel driver
     ch: Channel,
     /// FUSE protocol major version
-    pub proto_major: u32,
+    pub proto_major: AtomicU32,
     /// FUSE protocol minor version
-    pub proto_minor: u32,
+    pub proto_minor: AtomicU32,
     /// True if the filesystem is initialized (init operation done)
-    pub initialized: bool,
+    pub initialized: AtomicBool,
     /// True if the filesystem was destroyed (destroy operation done)
-    pub destroyed: bool,
+    pub destroyed: AtomicBool,
 }
 
 impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
@@ -49,12 +50,12 @@ impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
         info!("Mounting {}", mountpoint.display());
         Channel::new(mountpoint, options).map(|ch| {
             Session {
-                filesystem: Arc::new(filesystem),
+                filesystem: filesystem,
                 ch: ch,
-                proto_major: 0,
-                proto_minor: 0,
-                initialized: false,
-                destroyed: false,
+                proto_major: AtomicU32::new(0),
+                proto_minor: AtomicU32::new(0),
+                initialized: AtomicBool::new(false),
+                destroyed: AtomicBool::new(false),
             }
         })
     }
@@ -68,17 +69,21 @@ impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
     /// calls into the filesystem. This read-dispatch-loop is non-concurrent to prevent
     /// having multiple buffers (which take up much memory), but the filesystem methods
     /// may run concurrent by spawning threads.
-    pub async fn run(&mut self) -> io::Result<()> {
+    pub fn run(self) -> io::Result<()> {
         // Buffer for receiving requests from the kernel. Only one is allocated and
         // it is reused immediately after dispatching to conserve memory and allocations.
         let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
+        let se = Arc::new(self);
         loop {
             // Read the next request from the given channel to kernel driver
             // The kernel driver makes sure that we get exactly one request per read
-            match self.ch.receive(&mut buffer) {
-                Ok(()) => match Request::new(self.ch.sender(), &buffer) {
+            match se.ch.receive(&mut buffer) {
+                Ok(()) => match Request::new(se.ch.sender(), &buffer) {
                     // Dispatch request
-                    Some(req) => req.dispatch(self).await,
+                    Some(req) => {
+                        let se = se.clone();
+                        tokio::spawn( async move { req.dispatch(se).await });
+                    },
                     // Quit loop on illegal request
                     None => break,
                 },
@@ -117,9 +122,8 @@ impl<FS: Filesystem + Send + Sync + 'static> Drop for Session<FS> {
 pub struct BackgroundSession {
     /// Path of the mounted filesystem
     pub mountpoint: PathBuf,
-
-    /// Thread guard of the background session
-    pub handle: tokio::task::JoinHandle<io::Result<()>>,
+    /// handle of the background session
+    pub handle: tokio::task::JoinHandle<Result<(), std::io::Error>>,
 }
 
 impl BackgroundSession {
@@ -128,10 +132,7 @@ impl BackgroundSession {
     /// the filesystem is unmounted and the given session ends.
     pub unsafe fn new<FS: Filesystem + Send + Sync + 'static>(se: Session<FS>) -> io::Result<BackgroundSession> {
         let mountpoint = se.mountpoint().to_path_buf();
-        let handle = tokio::spawn(async move {
-            let mut se = se;
-            se.run().await
-        });
+        let handle = tokio::spawn ( async move { se.run() } );
         Ok(BackgroundSession { mountpoint: mountpoint, handle: handle })
     }
 }
