@@ -5,8 +5,8 @@
 //! filesystem is mounted, the session loop receives, dispatches and replies to kernel requests
 //! for filesystem operations under its mount point.
 
+use std::ffi::OsString;
 use std::io;
-use std::ffi::OsStr;
 use std::fmt;
 use std::path::{PathBuf, Path};
 use libc::{EAGAIN, EINTR, ENODEV, ENOENT};
@@ -45,7 +45,7 @@ pub struct Session<FS: Filesystem + Send + Sync + 'static> {
 
 impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
     /// Create a new session by mounting the given filesystem to the given mountpoint
-    pub fn new(filesystem: FS, mountpoint: &Path, options: &[&OsStr]) -> io::Result<Session<FS>> {
+    pub fn new(filesystem: FS, mountpoint: &Path, options: &[OsString]) -> io::Result<Session<FS>> {
         info!("Mounting {}", mountpoint.display());
         Channel::new(mountpoint, options).map(|ch| {
             Session {
@@ -102,8 +102,8 @@ impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
 
 impl<FS: Filesystem + Send + Sync + 'static> Session<FS> {
     /// Run the session loop in a background thread
-    pub async unsafe fn spawn(self) -> io::Result<BackgroundSession> {
-        BackgroundSession::new(self).await
+    pub unsafe fn spawn(self) -> io::Result<BackgroundSession> {
+        BackgroundSession::new(self)
     }
 }
 
@@ -117,21 +117,22 @@ impl<FS: Filesystem + Send + Sync + 'static> Drop for Session<FS> {
 pub struct BackgroundSession {
     /// Path of the mounted filesystem
     pub mountpoint: PathBuf,
+
     /// Thread guard of the background session
-    pub guard: tokio::task::JoinHandle<io::Result<()>>,
+    pub handle: tokio::task::JoinHandle<io::Result<()>>,
 }
 
 impl BackgroundSession {
     /// Create a new background session for the given session by running its
     /// session loop in a background thread. If the returned handle is dropped,
     /// the filesystem is unmounted and the given session ends.
-    pub async unsafe fn new<FS: Filesystem + Send + Sync + 'static>(se: Session<FS>) -> io::Result<BackgroundSession> {
+    pub unsafe fn new<FS: Filesystem + Send + Sync + 'static>(se: Session<FS>) -> io::Result<BackgroundSession> {
         let mountpoint = se.mountpoint().to_path_buf();
-        let guard = tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut se = se;
             se.run().await
         });
-        Ok(BackgroundSession { mountpoint: mountpoint, guard: guard })
+        Ok(BackgroundSession { mountpoint: mountpoint, handle: handle })
     }
 }
 

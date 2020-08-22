@@ -3,7 +3,7 @@
 //! Raw communication channel to the FUSE kernel driver.
 
 use std::io;
-use std::ffi::{CString, CStr, OsStr};
+use std::ffi::{CStr, CString, OsString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{PathBuf, Path};
 use fuse_sys::{fuse_args, fuse_mount_compat25};
@@ -14,7 +14,7 @@ use crate::reply::ReplySender;
 
 /// Helper function to provide options as a fuse_args struct
 /// (which contains an argc count and an argv pointer)
-fn with_fuse_args<T, F: FnOnce(&fuse_args) -> T>(options: &[&OsStr], f: F) -> T {
+fn with_fuse_args<T, F: FnOnce(&fuse_args) -> T>(options: &[OsString], f: F) -> T {
     let mut args = vec![CString::new("fuse-rs").unwrap()];
     args.extend(options.iter().map(|s| CString::new(s.as_bytes()).unwrap()));
     let argptrs: Vec<_> = args.iter().map(|s| s.as_ptr()).collect();
@@ -33,7 +33,7 @@ impl Channel {
     /// given path. The kernel driver will delegate filesystem operations of
     /// the given path to the channel. If the channel is dropped, the path is
     /// unmounted.
-    pub fn new(mountpoint: &Path, options: &[&OsStr]) -> io::Result<Channel> {
+    pub fn new(mountpoint: &Path, options: &[OsString]) -> io::Result<Channel> {
         let mountpoint = mountpoint.canonicalize()?;
         with_fuse_args(options, |args| {
             let mnt = CString::new(mountpoint.as_os_str().as_bytes())?;
@@ -160,11 +160,11 @@ pub fn unmount(mountpoint: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod test {
     use super::with_fuse_args;
-    use std::ffi::{CStr, OsStr};
+    use std::ffi::{CStr, OsString};
 
     #[test]
     fn fuse_args() {
-        with_fuse_args(&[OsStr::new("foo"), OsStr::new("bar")], |args| {
+        with_fuse_args(&[OsString::from("foo"), OsString::from("bar")], |args| {
             assert_eq!(args.argc, 3);
             assert_eq!(unsafe { CStr::from_ptr(*args.argv.offset(0)).to_bytes() }, b"fuse-rs");
             assert_eq!(unsafe { CStr::from_ptr(*args.argv.offset(1)).to_bytes() }, b"foo");

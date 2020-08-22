@@ -6,6 +6,7 @@
 
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 
+use std::ffi::OsString;
 use std::convert::AsRef;
 use std::io;
 use std::ffi::OsStr;
@@ -369,7 +370,7 @@ pub trait Filesystem {
 ///
 /// Note that you need to lead each option with a separate `"-o"` string. See
 /// `examples/hello.rs`.
-pub async fn mount<FS: Filesystem + Send + Sync + 'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[&OsStr]) -> io::Result<()>{
+pub async fn mount<FS: Filesystem + Send + Sync + 'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[OsString]) -> io::Result<()>{
     let mut se = Session::new(filesystem, mountpoint.as_ref(), options)?;
     se.run().await
 }
@@ -379,7 +380,7 @@ pub async fn mount<FS: Filesystem + Send + Sync + 'static, P: AsRef<Path>>(files
 /// and therefore returns immediately. The returned handle should be stored
 /// to reference the mounted filesystem. If it's dropped, the filesystem will
 /// be unmounted.
-pub async unsafe fn spawn_mount<FS: Filesystem + Send + Sync +'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[&OsStr]) -> io::Result<BackgroundSession> {
+pub unsafe fn spawn_mount<FS: Filesystem + Send + Sync +'static, P: AsRef<Path>>(filesystem: FS, mountpoint: P, options: &[OsString]) -> io::Result<BackgroundSession> {
     let se = Session::new(filesystem, mountpoint.as_ref(), options)?;
-    se.spawn().await
+    se.spawn()
 }

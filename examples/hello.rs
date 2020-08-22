@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::time::{Duration, UNIX_EPOCH};
 use libc::ENOENT;
 use async_fuse::{FileType, FileAttr, Filesystem, Request, ReplyData, ReplyEntry, ReplyAttr, ReplyDirectory};
@@ -97,7 +97,7 @@ async fn main() {
     let mountpoint = env::args_os().nth(1).unwrap();
     let options = ["-o", "ro", "-o", "fsname=hello"]
         .iter()
-        .map(|o| o.as_ref())
-        .collect::<Vec<&OsStr>>();
+        .map(|s| OsString::from(&s))
+        .collect::<Vec<OsString>>();
     async_fuse::mount(HelloFS, mountpoint, &options).await.unwrap();
 }
