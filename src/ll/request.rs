@@ -176,6 +176,11 @@ pub enum Operation {
     //     arg: fuse_fallocate_in,
     // },
 
+    #[cfg(feature = "abi-7-28")]
+    CopyFileRange {
+        arg: fuse_copy_file_range_in,
+    },
+
     #[cfg(target_os = "macos")]
     SetVolName {
         name: OsString,
@@ -234,6 +239,11 @@ impl<'a> fmt::Display for Operation {
             Operation::Interrupt { arg } => write!(f, "INTERRUPT unique {}", arg.unique),
             Operation::BMap { arg } => write!(f, "BMAP blocksize {}, ids {}", arg.blocksize, arg.block),
             Operation::Destroy => write!(f, "DESTROY"),
+
+            #[cfg(feature = "abi-7-28")]
+            Operation::CopyFileRange { arg } =>
+                write!(f, "COPY_FILE_RANGE fh_in {}, offset {}, nodeid_out {}, fh_out {}, off_out {}, len {}, flags {:#x}",
+                        arg.fh_in, arg.off_in, arg.nodeid_out, arg.fh_out, arg.off_out, arg.len, arg.flags),
 
             #[cfg(target_os = "macos")]
             Operation::SetVolName { name } => write!(f, "SETVOLNAME name {:?}", name),
@@ -322,6 +332,11 @@ impl Operation {
                 fuse_opcode::FUSE_INTERRUPT => Operation::Interrupt { arg: *data.fetch()? },
                 fuse_opcode::FUSE_BMAP => Operation::BMap { arg: *data.fetch()? },
                 fuse_opcode::FUSE_DESTROY => Operation::Destroy,
+
+                #[cfg(feature = "abi-7-28")]
+                fuse_opcode::FUSE_COPY_FILE_RANGE => Operation::CopyFileRange {
+                    arg: *data.fetch()?,
+                },
 
                 #[cfg(target_os = "macos")]
                 fuse_opcode::FUSE_SETVOLNAME => Operation::SetVolName {

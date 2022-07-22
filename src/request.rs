@@ -295,6 +295,24 @@ impl Request {
                 se.filesystem.bmap(req, req.request.nodeid(), arg.blocksize, arg.block, req.reply()).await;
             }
 
+            #[cfg(feature = "abi-7-28")]
+            ll::Operation::CopyFileRange { arg } => {
+                se.filesystem
+                    .copy_file_range(
+                        req,
+                        req.request.nodeid(),
+                        arg.fh_in.into(),
+                        arg.off_in,
+                        arg.nodeid_out.into(),
+                        arg.fh_out.into(),
+                        arg.off_out,
+                        arg.len,
+                        arg.flags as u32,
+                        self.reply(),
+                    )
+                    .await;
+            }
+
             #[cfg(target_os = "macos")]
             ll::Operation::SetVolName { name } => {
                 se.filesystem.setvolname(req, name, req.reply()).await;

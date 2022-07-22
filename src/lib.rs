@@ -344,6 +344,13 @@ pub trait Filesystem {
         reply.error(ENOSYS);
     }
 
+    /// Copy the specified range from the source inode to the destination inode
+    async fn copy_file_range(&self, _req: &Request, _ino_in: u64, _fh_in: u64, _offset_in: i64, _ino_out: u64,_fh_out: u64, _offset_out: i64,
+        _len: u64, _flags: u32, reply: ReplyWrite,
+    ) {
+        reply.error(ENOSYS);
+    }
+
     /// macOS only: Rename the volume. Set fuse_init_out.flags during init to
     /// FUSE_VOL_RENAME to enable
     #[cfg(target_os = "macos")]

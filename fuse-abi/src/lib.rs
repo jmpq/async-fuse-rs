@@ -283,6 +283,16 @@ pub enum fuse_opcode {
     #[cfg(feature = "abi-7-19")]
     FUSE_FALLOCATE = 43,
 
+    #[cfg(feature = "abi-7-21")]
+    FUSE_READDIRPLUS = 44,
+    #[cfg(feature = "abi-7-23")]
+    FUSE_RENAME2 = 45,
+    #[cfg(feature = "abi-7-24")]
+    FUSE_LSEEK = 46,
+
+    #[cfg(feature = "abi-7-28")]
+    FUSE_COPY_FILE_RANGE = 47,
+
     #[cfg(target_os = "macos")]
     FUSE_SETVOLNAME = 61,
     #[cfg(target_os = "macos")]
@@ -345,6 +355,9 @@ impl TryFrom<u32> for fuse_opcode {
             42 => Ok(fuse_opcode::FUSE_BATCH_FORGET),
             #[cfg(feature = "abi-7-19")]
             43 => Ok(fuse_opcode::FUSE_FALLOCATE),
+
+            #[cfg(feature = "abi-7-28")]
+            47 => Ok(fuse_opcode::FUSE_COPY_FILE_RANGE),
 
             #[cfg(target_os = "macos")]
             61 => Ok(fuse_opcode::FUSE_SETVOLNAME),
@@ -927,4 +940,17 @@ pub struct fuse_notify_retrieve_in {                    // matches the size of f
     pub dummy2: u32,
     pub dummy3: u64,
     pub dummy4: u64,
+}
+#[repr(C)]
+#[derive(Debug, /*FromBytes,*/ Clone, Copy)]
+pub struct fuse_copy_file_range_in {
+    pub fh_in: u64,
+    // NOTE: this field is defined as u64 in fuse_kernel.h in libfuse. However, it is treated as signed
+    pub off_in: i64,
+    pub nodeid_out: u64,
+    pub fh_out: u64,
+    // NOTE: this field is defined as u64 in fuse_kernel.h in libfuse. However, it is treated as signed
+    pub off_out: i64,
+    pub len: u64,
+    pub flags: u64,
 }
