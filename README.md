@@ -7,7 +7,6 @@
 
 **async-fuse-rs** is a async [Rust] library crate based on the rust-rs crate for easy implementation of [FUSE filesystems][libfuse] in userspace.
 
-
 ## Documentation
 
 [Crate documentation][documentation]
@@ -56,12 +55,12 @@ sudo yum install fuse-devel pkgconfig
 
 ### macOS
 
-Installer packages can be downloaded from the [FUSE for macOS homepage][FUSE for macOS].
+Installer packages can be downloaded from the [FUSE for macOS homepage][fuse for macos].
 
 To install using [Homebrew]:
 
 ```sh
-brew cask install osxfuse
+brew install macfuse
 ```
 
 To install `pkg-config` (required for building only):
